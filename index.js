@@ -1,6 +1,7 @@
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const express = require('express')
 const cors = require('cors')
+const jwt = require('jsonwebtoken')
 require('dotenv').config()
 
 const app = express()
@@ -14,6 +15,23 @@ app.use(express.json())
 // mongodb 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.PASSWORD}@cluster0.17kk4sr.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+
+// 
+function verifyJWT(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).send({ message: 'Unauthorized' })
+    }
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
+        if (err) {
+            return res.status(403).send({ message: 'Forbidden' })
+        }
+        req.decoded = decoded;
+    })
+    next()
+}
+
 
 async function run() {
     try {
@@ -56,7 +74,14 @@ async function run() {
         })
 
         // get my review by email query 
-        app.get('/my_review', async (req, res) => {
+        app.get('/my_review', verifyJWT, async (req, res) => {
+            const decoded = req.decoded;
+            console.log(decoded)
+            console.log(req.query.email)
+            if (decoded.email !== req.query.email) {
+                res.status(403).send({ message: 'unauthorized access' })
+            }
+
             let query = {}
             if (req.query.email) {
                 query = { email: req.query.email }
@@ -81,6 +106,13 @@ async function run() {
             const reviewInfo = req.body;
             const review = await reviewCollevtion.insertOne(reviewInfo)
             res.send(review)
+        })
+
+        // jwt token 
+        app.post('/jwt', (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN, { expiresIn: '1h' })
+            res.send({ token })
         })
     }
     finally {
